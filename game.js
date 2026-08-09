@@ -28,6 +28,10 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+function dropIntervalForLevel(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
+}
+
 const POWER_TYPES = ['bomb', 'lightning', 'dye', 'gravity', 'freeze'];
 const POWER_CHANCE = 0.09;
 const FREEZE_DURATION = 5000;
@@ -132,8 +136,8 @@ function clearLines() {
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    level = startLevel + Math.floor(lines / 10);
+    dropInterval = dropIntervalForLevel(level);
     updateHUD();
   }
 }
@@ -346,14 +350,22 @@ function drawNext() {
   if (next.isSpecial) drawPieceGlow(nextCtx, { shape, x: offX, y: offY, powerType: next.powerType }, NB);
 }
 
+// Keeps overlay/restart-btn/pause-menu visibility in lockstep instead of
+// toggling each element by hand at every call site.
+function setOverlayMode(mode) {
+  // mode: 'hidden' | 'gameover' | 'paused'
+  restartBtn.classList.toggle('hidden', mode === 'paused');
+  pauseMenu.classList.toggle('hidden', mode !== 'paused');
+  pauseControlsList.classList.add('hidden');
+  overlay.classList.toggle('hidden', mode === 'hidden');
+}
+
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
-  restartBtn.classList.remove('hidden');
-  pauseMenu.classList.add('hidden');
-  overlay.classList.remove('hidden');
+  setOverlayMode('gameover');
 }
 
 function applyTheme(theme) {
@@ -379,20 +391,15 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
-    overlay.classList.add('hidden');
-    pauseMenu.classList.add('hidden');
-    pauseControlsList.classList.add('hidden');
+    setOverlayMode('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
-    restartBtn.classList.add('hidden');
-    pauseControlsList.classList.add('hidden');
     startLevelSelect.value = String(startLevel);
-    pauseMenu.classList.remove('hidden');
-    overlay.classList.remove('hidden');
+    setOverlayMode('paused');
   }
 }
 
@@ -424,7 +431,7 @@ function init() {
   level = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = Math.max(100, 1000 - (startLevel - 1) * 90);
+  dropInterval = dropIntervalForLevel(startLevel);
   dropAccum = 0;
   lastTime = performance.now();
   freezeUntil = 0;
@@ -434,16 +441,19 @@ function init() {
   next = randomPiece();
   spawn();
   updateHUD();
-  restartBtn.classList.remove('hidden');
-  pauseMenu.classList.add('hidden');
-  pauseControlsList.classList.add('hidden');
-  overlay.classList.add('hidden');
+  setOverlayMode('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    // Let a focused native <select> handle its own Escape (closing its
+    // open dropdown) instead of also toggling pause underneath it.
+    if (document.activeElement === startLevelSelect) return;
+    togglePause();
+    return;
+  }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
