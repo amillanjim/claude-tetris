@@ -15,6 +15,58 @@ const COLORS = [
   '#ffb74d', // L - orange
 ];
 
+// Skin definitions: each has a 7-entry color palette (parallel to COLORS) plus
+// flags/values drawBlock() branches on to change *how* a block is drawn, not
+// just its color. Independent from the light/dark theme system (CSS vars).
+const SKINS = {
+  retro: {
+    label: 'Retro',
+    colors: COLORS,     // exact current behavior/palette
+    glow: 0,
+    rounded: false,
+    pixel: false,
+  },
+  neon: {
+    label: 'Neón',
+    colors: [
+      null,
+      '#00e5ff', // I - cyan
+      '#ffea00', // O - yellow
+      '#e040fb', // T - magenta
+      '#00e676', // S - green
+      '#ff1744', // Z - red
+      '#536dfe', // J - blue
+      '#ff9100', // L - orange
+    ],
+    glow: 14,
+    rounded: false,
+    pixel: false,
+  },
+  pastel: {
+    label: 'Pastel',
+    colors: [
+      null,
+      '#a8dadc', // I
+      '#ffe8a3', // O
+      '#d8bfd8', // T
+      '#b5e5b5', // S
+      '#f4a9a8', // Z
+      '#b0b0e8', // J
+      '#ffd0a3', // L
+    ],
+    glow: 0,
+    rounded: true,
+    pixel: false,
+  },
+  pixel: {
+    label: 'Pixel art',
+    colors: COLORS,
+    glow: 0,
+    rounded: false,
+    pixel: true,
+  },
+};
+
 const PIECES = [
   null,
   [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
@@ -51,12 +103,15 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
+const skinSelectEl = document.getElementById('skin-select');
 const toastEl = document.getElementById('toast');
 const freezeIndicatorEl = document.getElementById('freeze-indicator');
 
 const THEME_KEY = 'tetris-theme';
+const SKIN_KEY = 'tetris-skin';
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, freezeUntil, toastTimer;
+let currentSkin = 'retro';
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -244,16 +299,96 @@ function updateFreezeIndicator(active) {
   freezeIndicatorEl.classList.remove('hidden');
 }
 
+function roundedRectPath(context, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (typeof context.roundRect === 'function') {
+    context.beginPath();
+    context.roundRect(x, y, w, h, r);
+    return;
+  }
+  // Manual fallback for canvas contexts without roundRect().
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.lineTo(x + w - r, y);
+  context.quadraticCurveTo(x + w, y, x + w, y + r);
+  context.lineTo(x + w, y + h - r);
+  context.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  context.lineTo(x + r, y + h);
+  context.quadraticCurveTo(x, y + h, x, y + h - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+  context.closePath();
+}
+
+function drawPixelTexture(context, x, y, w, h) {
+  const cell = Math.max(3, Math.floor(Math.min(w, h) / 4));
+  context.save();
+  context.beginPath();
+  context.rect(x, y, w, h);
+  context.clip();
+  let rowIdx = 0;
+  for (let ty = y; ty < y + h; ty += cell) {
+    let colIdx = 0;
+    for (let tx = x; tx < x + w; tx += cell) {
+      context.fillStyle = (rowIdx + colIdx) % 2 === 0
+        ? 'rgba(0,0,0,0.14)'
+        : 'rgba(255,255,255,0.10)';
+      context.fillRect(tx, ty, cell, cell);
+      colIdx++;
+    }
+    rowIdx++;
+  }
+  context.restore();
+}
+
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const skin = SKINS[currentSkin] || SKINS.retro;
+  const color = skin.colors[colorIndex];
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const w = size - 2;
+  const h = size - 2;
+
+  context.save();
   context.globalAlpha = alpha ?? 1;
+
+  if (skin.glow) {
+    context.shadowColor = color;
+    context.shadowBlur = skin.glow;
+  }
+
   context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
+  const cornerR = Math.min(6, w / 4, h / 4);
+  if (skin.rounded) {
+    roundedRectPath(context, px, py, w, h, cornerR);
+    context.fill();
+  } else {
+    context.fillRect(px, py, w, h);
+  }
+
+  // Highlight strip should not inherit the glow shadow.
+  context.shadowBlur = 0;
   context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
-  context.globalAlpha = 1;
+  const hlH = Math.min(4, h);
+  if (skin.rounded) {
+    // Clip to the block's own rounded path so the highlight's top corners
+    // follow the block outline instead of getting an independent (and
+    // mismatched) corner radius of its own.
+    context.save();
+    roundedRectPath(context, px, py, w, h, cornerR);
+    context.clip();
+    context.fillRect(px, py, w, hlH);
+    context.restore();
+  } else {
+    context.fillRect(px, py, w, hlH);
+  }
+
+  if (skin.pixel) {
+    drawPixelTexture(context, px, py, w, h);
+  }
+
+  context.restore();
 }
 
 function drawPieceGlow(context, piece, size) {
@@ -365,6 +500,26 @@ themeToggleBtn.addEventListener('click', () => {
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 });
 
+function applySkin(skin) {
+  if (!SKINS[skin]) skin = 'retro';
+  currentSkin = skin;
+  document.documentElement.dataset.skin = skin;
+  localStorage.setItem(SKIN_KEY, skin);
+  if (skinSelectEl) skinSelectEl.value = skin;
+  if (current) draw();
+}
+
+function initSkin() {
+  const saved = localStorage.getItem(SKIN_KEY);
+  applySkin(SKINS[saved] ? saved : 'retro');
+}
+
+if (skinSelectEl) {
+  skinSelectEl.addEventListener('change', () => {
+    applySkin(skinSelectEl.value);
+  });
+}
+
 function togglePause() {
   if (gameOver) return;
   paused = !paused;
@@ -450,4 +605,5 @@ document.addEventListener('keydown', e => {
 restartBtn.addEventListener('click', init);
 
 initTheme();
+initSkin();
 init();
