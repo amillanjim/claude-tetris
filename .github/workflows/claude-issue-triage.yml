@@ -1,0 +1,34 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Analyze GitHub issue #${{ github.event.issue.number }} in this repository.
+
+            1. Read the issue title and body with `gh issue view ${{ github.event.issue.number }} --json title,body,comments`.
+            2. Read CLAUDE.md and game.js to understand the codebase (board model, piece/rotation, collision, wall kicks, game loop, locking/line-clear, scoring/leveling, rendering, input).
+            3. Apply the most appropriate label(s) from this repo's existing label set only — bug, enhancement, documentation, question, duplicate, invalid, wontfix, help wanted, good first issue — using `gh issue edit ${{ github.event.issue.number }} --add-label "..."`. Only add labels that clearly apply. Never create new labels.
+            4. Check the issue's existing comments (from step 1) for one containing the marker `<!-- claude-triage -->`.
+               - If none exists, post a new comment via `gh issue comment ${{ github.event.issue.number }} --body "..."` containing that marker plus a general diagnosis: the likely root cause, the specific area/function of game.js involved, and a suggested approach for implementing a fix — meant to give whoever works the issue a head start.
+               - If one already exists (e.g. the issue was edited), update it in place with `gh issue comment ${{ github.event.issue.number }} --edit-last --body "..."` instead of posting a duplicate. Only do this if the last comment is the one containing the marker.
+            5. Do not modify any code or files in the repository — only labels and the one diagnostic comment.
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*)"'
