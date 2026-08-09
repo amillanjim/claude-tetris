@@ -9,14 +9,65 @@ body {
   color: #e0e0e0;
   font-family: system-ui, -apple-system, sans-serif;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 24px;
   min-height: 100vh;
   user-select: none;
 }
 
 .wrapper {
   position: relative;
+}
+
+/* ---- Título ---- */
+.game-title {
+  margin: 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 56px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  text-align: center;
+  text-transform: uppercase;
+  background: linear-gradient(
+    90deg,
+    #4dd0e1 0%,
+    #ffd54f 16.6%,
+    #ba68c8 33.2%,
+    #81c784 49.8%,
+    #e57373 66.4%,
+    #7986cb 83%,
+    #ffb74d 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(15, 15, 23, 0.6);
+  text-shadow:
+    1px 1px 0 #4dd0e1,
+    2px 2px 0 #4dd0e1,
+    3px 3px 0 #ffd54f,
+    4px 4px 0 #ffd54f,
+    5px 5px 0 #ba68c8,
+    6px 6px 0 #ba68c8,
+    7px 7px 0 #81c784,
+    8px 8px 0 #81c784,
+    9px 9px 0 #e57373,
+    10px 10px 0 #e57373,
+    11px 11px 0 #7986cb,
+    12px 12px 0 #7986cb,
+    13px 13px 0 #ffb74d,
+    14px 14px 0 #ffb74d,
+    16px 16px 20px rgba(0, 0, 0, 0.55);
+  animation: title-shine 6s linear infinite;
+}
+
+@keyframes title-shine {
+  to {
+    background-position: -200% center;
+  }
 }
 
 .game-container {
@@ -149,4 +200,12 @@ kbd {
 
 #restart-btn:hover {
   background: #9bbdff;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 480px) {
+  .game-title {
+    font-size: 36px;
+    letter-spacing: 6px;
+  }
 }
