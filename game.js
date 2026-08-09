@@ -53,10 +53,19 @@ const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 const toastEl = document.getElementById('toast');
 const freezeIndicatorEl = document.getElementById('freeze-indicator');
+const leaderboardListEl = document.getElementById('leaderboard-list');
+const bestComboStatEl = document.getElementById('best-combo-stat');
+const maxLinesStatEl = document.getElementById('max-lines-stat');
+const resetLeaderboardBtn = document.getElementById('reset-leaderboard-btn');
+const nameEntryEl = document.getElementById('name-entry');
+const nameInputEl = document.getElementById('player-name-input');
+const submitScoreBtn = document.getElementById('submit-score-btn');
 
 const THEME_KEY = 'tetris-theme';
+const LEADERBOARD_KEY = 'tetris-leaderboard';
+const STATS_KEY = 'tetris-stats';
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, freezeUntil, toastTimer;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, freezeUntil, toastTimer, combo, bestCombo, maxLinesCleared;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -128,6 +137,7 @@ function clearLines() {
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
   }
+  return cleared;
 }
 
 function pieceCenter(piece) {
@@ -206,7 +216,14 @@ function softDrop() {
 function lockPiece() {
   merge();
   if (current.isSpecial) applyPowerUp(current);
-  clearLines();
+  const clearedCount = clearLines();
+  if (clearedCount > 0) {
+    combo++;
+    if (combo > bestCombo) bestCombo = combo;
+    if (clearedCount > maxLinesCleared) maxLinesCleared = clearedCount;
+  } else {
+    combo = 0;
+  }
   spawn();
 }
 
@@ -338,11 +355,135 @@ function drawNext() {
   if (next.isSpecial) drawPieceGlow(nextCtx, { shape, x: offX, y: offY, powerType: next.powerType }, NB);
 }
 
+const LEADERBOARD_SIZE = 5;
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadLeaderboard() {
+  const list = loadJSON(LEADERBOARD_KEY, []);
+  if (!Array.isArray(list)) return [];
+  return list.filter(e => e && typeof e.name === 'string' && Number.isFinite(e.score));
+}
+
+function saveLeaderboard(list) {
+  return saveJSON(LEADERBOARD_KEY, list);
+}
+
+function loadStats() {
+  const stats = loadJSON(STATS_KEY, null);
+  return {
+    bestCombo: stats && Number.isFinite(stats.bestCombo) ? stats.bestCombo : 0,
+    maxLines: stats && Number.isFinite(stats.maxLines) ? stats.maxLines : 0,
+  };
+}
+
+function saveStats(stats) {
+  return saveJSON(STATS_KEY, stats);
+}
+
+function updateStats() {
+  const stats = loadStats();
+  stats.bestCombo = Math.max(stats.bestCombo, bestCombo);
+  stats.maxLines = Math.max(stats.maxLines, maxLinesCleared);
+  saveStats(stats);
+  return stats;
+}
+
+function qualifiesForTop5(candidateScore, list) {
+  if (list.length < LEADERBOARD_SIZE) return true;
+  return candidateScore >= list[list.length - 1].score;
+}
+
+function renderLeaderboard(highlightId, list, stats) {
+  list = list || loadLeaderboard();
+  stats = stats || loadStats();
+
+  leaderboardListEl.innerHTML = '';
+  if (list.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'leaderboard-empty';
+    li.textContent = 'Sin puntuaciones aún';
+    leaderboardListEl.appendChild(li);
+  } else {
+    list.forEach(entry => {
+      const li = document.createElement('li');
+      li.className = 'leaderboard-entry';
+      if (highlightId != null && entry.id === highlightId) li.classList.add('leaderboard-highlight');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'leaderboard-name';
+      nameSpan.textContent = entry.name;
+
+      const scoreSpan = document.createElement('span');
+      scoreSpan.className = 'leaderboard-score';
+      scoreSpan.textContent = entry.score.toLocaleString();
+
+      li.appendChild(nameSpan);
+      li.appendChild(scoreSpan);
+      leaderboardListEl.appendChild(li);
+    });
+  }
+
+  bestComboStatEl.textContent = stats.bestCombo;
+  maxLinesStatEl.textContent = stats.maxLines;
+}
+
+function submitScore(rawName) {
+  const name = (rawName || '').trim().slice(0, 12) || 'Jugador';
+  const list = loadLeaderboard();
+  const entry = { id: Date.now() + Math.random(), name, score, lines, level, bestCombo };
+  list.push(entry);
+  list.sort((a, b) => b.score - a.score);
+  const trimmed = list.slice(0, LEADERBOARD_SIZE);
+  const saved = saveLeaderboard(trimmed);
+  renderLeaderboard(entry.id, trimmed);
+  nameEntryEl.classList.add('hidden');
+  if (!saved) showToast('No se pudo guardar el récord');
+}
+
+function resetLeaderboard() {
+  if (!confirm('¿Seguro que quieres borrar todos los récords?')) return;
+  lastTime = performance.now(); // dialog blocked the loop; avoid a dt spike on resume
+  localStorage.removeItem(LEADERBOARD_KEY);
+  localStorage.removeItem(STATS_KEY);
+  renderLeaderboard();
+}
+
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  try {
+    const stats = updateStats();
+    const list = loadLeaderboard();
+    renderLeaderboard(null, list, stats);
+    if (qualifiesForTop5(score, list)) {
+      nameInputEl.value = '';
+      nameEntryEl.classList.remove('hidden');
+      setTimeout(() => nameInputEl.focus(), 0);
+    } else {
+      nameEntryEl.classList.add('hidden');
+    }
+  } catch {
+    nameEntryEl.classList.add('hidden');
+  }
   overlay.classList.remove('hidden');
 }
 
@@ -407,6 +548,9 @@ function init() {
   level = 1;
   paused = false;
   gameOver = false;
+  combo = 0;
+  bestCombo = 0;
+  maxLinesCleared = 0;
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
@@ -414,6 +558,8 @@ function init() {
   clearTimeout(toastTimer);
   toastEl.classList.remove('show');
   freezeIndicatorEl.classList.add('hidden');
+  nameEntryEl.classList.add('hidden');
+  nameInputEl.value = '';
   next = randomPiece();
   spawn();
   updateHUD();
@@ -449,5 +595,12 @@ document.addEventListener('keydown', e => {
 
 restartBtn.addEventListener('click', init);
 
+submitScoreBtn.addEventListener('click', () => submitScore(nameInputEl.value));
+nameInputEl.addEventListener('keydown', e => {
+  if (e.code === 'Enter') submitScore(nameInputEl.value);
+});
+resetLeaderboardBtn.addEventListener('click', resetLeaderboard);
+
 initTheme();
+renderLeaderboard();
 init();
