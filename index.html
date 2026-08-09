@@ -13,7 +13,11 @@
   <h1 class="game-title">TETRIS</h1>
   <div class="wrapper">
     <div class="game-container">
-      <canvas id="board" width="300" height="600"></canvas>
+      <div class="board-wrap">
+        <canvas id="board" width="300" height="600"></canvas>
+        <div id="toast" class="toast"></div>
+        <div id="freeze-indicator" class="freeze-indicator hidden"></div>
+      </div>
 
       <aside class="panel">
         <div class="panel-section">
