@@ -28,6 +28,10 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+function dropIntervalForLevel(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
+}
+
 const POWER_TYPES = ['bomb', 'lightning', 'dye', 'gravity', 'freeze'];
 const POWER_CHANCE = 0.09;
 const FREEZE_DURATION = 5000;
@@ -60,12 +64,20 @@ const resetLeaderboardBtn = document.getElementById('reset-leaderboard-btn');
 const nameEntryEl = document.getElementById('name-entry');
 const nameInputEl = document.getElementById('player-name-input');
 const submitScoreBtn = document.getElementById('submit-score-btn');
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('resume-btn');
+const pauseRestartBtn = document.getElementById('pause-restart-btn');
+const controlsBtn = document.getElementById('controls-btn');
+const pauseControlsList = document.getElementById('pause-controls-list');
+const startLevelSelect = document.getElementById('start-level-select');
 
 const THEME_KEY = 'tetris-theme';
 const LEADERBOARD_KEY = 'tetris-leaderboard';
 const STATS_KEY = 'tetris-stats';
+const MAX_START_LEVEL = 15;
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, freezeUntil, toastTimer, combo, bestCombo, maxLinesCleared;
+let startLevel = 1;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -133,8 +145,8 @@ function clearLines() {
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    level = startLevel + Math.floor(lines / 10);
+    dropInterval = dropIntervalForLevel(level);
     updateHUD();
   }
   return cleared;
@@ -465,6 +477,16 @@ function resetLeaderboard() {
   renderLeaderboard();
 }
 
+// Keeps overlay/restart-btn/pause-menu visibility in lockstep instead of
+// toggling each element by hand at every call site.
+function setOverlayMode(mode) {
+  // mode: 'hidden' | 'gameover' | 'paused'
+  restartBtn.classList.toggle('hidden', mode === 'paused');
+  pauseMenu.classList.toggle('hidden', mode !== 'paused');
+  pauseControlsList.classList.add('hidden');
+  overlay.classList.toggle('hidden', mode === 'hidden');
+}
+
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
@@ -484,7 +506,7 @@ function endGame() {
   } catch {
     nameEntryEl.classList.add('hidden');
   }
-  overlay.classList.remove('hidden');
+  setOverlayMode('gameover');
 }
 
 function applyTheme(theme) {
@@ -510,13 +532,15 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    setOverlayMode('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    startLevelSelect.value = String(startLevel);
+    setOverlayMode('paused');
   }
 }
 
@@ -545,13 +569,13 @@ function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = startLevel;
   paused = false;
   gameOver = false;
   combo = 0;
   bestCombo = 0;
   maxLinesCleared = 0;
-  dropInterval = 1000;
+  dropInterval = dropIntervalForLevel(startLevel);
   dropAccum = 0;
   lastTime = performance.now();
   freezeUntil = 0;
@@ -563,13 +587,19 @@ function init() {
   next = randomPiece();
   spawn();
   updateHUD();
-  overlay.classList.add('hidden');
+  setOverlayMode('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    // Let a focused native <select> handle its own Escape (closing its
+    // open dropdown) instead of also toggling pause underneath it.
+    if (document.activeElement === startLevelSelect) return;
+    togglePause();
+    return;
+  }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -600,6 +630,28 @@ nameInputEl.addEventListener('keydown', e => {
   if (e.code === 'Enter') submitScore(nameInputEl.value);
 });
 resetLeaderboardBtn.addEventListener('click', resetLeaderboard);
+
+for (let i = 1; i <= MAX_START_LEVEL; i++) {
+  const opt = document.createElement('option');
+  opt.value = String(i);
+  opt.textContent = String(i);
+  startLevelSelect.appendChild(opt);
+}
+startLevelSelect.value = String(startLevel);
+
+resumeBtn.addEventListener('click', () => {
+  if (paused) togglePause();
+});
+
+pauseRestartBtn.addEventListener('click', init);
+
+controlsBtn.addEventListener('click', () => {
+  pauseControlsList.classList.toggle('hidden');
+});
+
+startLevelSelect.addEventListener('change', e => {
+  startLevel = parseInt(e.target.value, 10);
+});
 
 initTheme();
 renderLeaderboard();
