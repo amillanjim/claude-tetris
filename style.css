@@ -527,11 +527,18 @@ kbd {
   gap: 4px;
 }
 
-/* ---- Theme toggle ---- */
-.theme-toggle {
+/* ---- Top controls (skin selector + theme toggle) ---- */
+.top-controls {
   position: fixed;
   top: 16px;
   right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 10;
+}
+
+.theme-toggle {
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -549,6 +556,34 @@ kbd {
 
 .theme-toggle:hover {
   border-color: var(--value-color);
+}
+
+.skin-select {
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 20px;
+  border: 1px solid var(--kbd-border);
+  background: var(--kbd-bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.skin-select:hover,
+.skin-select:focus {
+  border-color: var(--value-color);
+  outline: none;
+}
+
+/* ---- Skin: Neon (independent of light/dark theme) ---- */
+[data-skin="neon"] #board,
+[data-skin="neon"] #next-canvas {
+  background: #05050a;
+  border-color: #1a1a2e;
+  box-shadow: 0 0 40px rgba(0, 229, 255, 0.25), 0 0 60px rgba(0, 0, 0, 0.6);
 }
 
 /* ---- Responsive ---- */
