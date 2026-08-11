@@ -24,6 +24,10 @@
   --restart-text: #0f0f17;
   --restart-hover: #9bbdff;
   --title-stroke: rgba(15, 15, 23, 0.6);
+  --highlight-bg: rgba(255, 213, 79, 0.18);
+  --highlight-border: #ffd54f;
+  --input-bg: #14141f;
+  --input-border: #3a3a5a;
 }
 
 [data-theme="light"] {
@@ -46,6 +50,10 @@
   --restart-text: #ffffff;
   --restart-hover: #4a6bc9;
   --title-stroke: rgba(240, 240, 245, 0.6);
+  --highlight-bg: rgba(255, 213, 79, 0.35);
+  --highlight-border: #c9960c;
+  --input-bg: #ffffff;
+  --input-border: #c8c8d8;
 }
 
 body {
@@ -241,6 +249,95 @@ kbd {
   color: var(--kbd-text);
 }
 
+/* ---- Récords / leaderboard ---- */
+.leaderboard-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  counter-reset: rank;
+}
+
+.leaderboard-entry {
+  counter-increment: rank;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.leaderboard-entry::before {
+  content: counter(rank) '.';
+  color: var(--label-color);
+  margin-right: 4px;
+  font-weight: 700;
+}
+
+.leaderboard-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.leaderboard-score {
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--value-color);
+  font-weight: 700;
+}
+
+.leaderboard-highlight {
+  background: var(--highlight-bg);
+  border: 1px solid var(--highlight-border);
+  animation: highlight-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes highlight-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.leaderboard-empty {
+  font-size: 12px;
+  color: var(--controls-text);
+}
+
+.leaderboard-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--controls-text);
+  margin-top: 4px;
+}
+
+.leaderboard-stats strong {
+  color: var(--value-color);
+}
+
+.reset-btn {
+  margin-top: 6px;
+  background: transparent;
+  color: var(--controls-text);
+  border: 1px solid var(--kbd-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.reset-btn:hover {
+  border-color: var(--overlay-title);
+  color: var(--overlay-title);
+}
+
 /* ---- Overlay ---- */
 .overlay {
   position: absolute;
@@ -296,11 +393,152 @@ kbd {
   background: var(--restart-hover);
 }
 
-/* ---- Theme toggle ---- */
-.theme-toggle {
+/* ---- Name entry (game over) ---- */
+.name-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+}
+
+.name-entry.hidden {
+  display: none;
+}
+
+.name-entry .label {
+  text-align: center;
+  color: var(--overlay-score);
+}
+
+#player-name-input {
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  text-align: center;
+}
+
+#player-name-input:focus {
+  outline: 2px solid var(--value-color);
+  outline-offset: 1px;
+}
+
+#submit-score-btn {
+  background: var(--restart-bg);
+  color: var(--restart-text);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 22px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s;
+}
+
+#submit-score-btn:hover {
+  background: var(--restart-hover);
+}
+
+#restart-btn.hidden,
+.pause-menu.hidden,
+.pause-controls-list.hidden {
+  display: none;
+}
+
+/* ---- Menú de pausa ---- */
+.pause-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.pause-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.pause-actions button {
+  background: var(--restart-bg);
+  color: var(--restart-text);
+  border: none;
+  border-radius: 6px;
+  padding: 10px 28px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s;
+}
+
+.pause-actions button:hover {
+  background: var(--restart-hover);
+}
+
+.pause-level {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pause-level label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--controls-text);
+  text-transform: uppercase;
+}
+
+.pause-level select {
+  background: var(--kbd-bg);
+  color: var(--fg);
+  border: 1px solid var(--kbd-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pause-controls-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--board-border);
+  width: 100%;
+}
+
+.pause-controls-list li {
+  font-size: 12px;
+  color: var(--controls-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* ---- Top controls (skin selector + theme toggle) ---- */
+.top-controls {
   position: fixed;
   top: 16px;
   right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 10;
+}
+
+.theme-toggle {
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -318,6 +556,34 @@ kbd {
 
 .theme-toggle:hover {
   border-color: var(--value-color);
+}
+
+.skin-select {
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 20px;
+  border: 1px solid var(--kbd-border);
+  background: var(--kbd-bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.skin-select:hover,
+.skin-select:focus {
+  border-color: var(--value-color);
+  outline: none;
+}
+
+/* ---- Skin: Neon (independent of light/dark theme) ---- */
+[data-skin="neon"] #board,
+[data-skin="neon"] #next-canvas {
+  background: #05050a;
+  border-color: #1a1a2e;
+  box-shadow: 0 0 40px rgba(0, 229, 255, 0.25), 0 0 60px rgba(0, 0, 0, 0.6);
 }
 
 /* ---- Responsive ---- */

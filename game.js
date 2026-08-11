@@ -15,6 +15,58 @@ const COLORS = [
   '#ffb74d', // L - orange
 ];
 
+// Skin definitions: each has a 7-entry color palette (parallel to COLORS) plus
+// flags/values drawBlock() branches on to change *how* a block is drawn, not
+// just its color. Independent from the light/dark theme system (CSS vars).
+const SKINS = {
+  retro: {
+    label: 'Retro',
+    colors: COLORS,     // exact current behavior/palette
+    glow: 0,
+    rounded: false,
+    pixel: false,
+  },
+  neon: {
+    label: 'Neón',
+    colors: [
+      null,
+      '#00e5ff', // I - cyan
+      '#ffea00', // O - yellow
+      '#e040fb', // T - magenta
+      '#00e676', // S - green
+      '#ff1744', // Z - red
+      '#536dfe', // J - blue
+      '#ff9100', // L - orange
+    ],
+    glow: 14,
+    rounded: false,
+    pixel: false,
+  },
+  pastel: {
+    label: 'Pastel',
+    colors: [
+      null,
+      '#a8dadc', // I
+      '#ffe8a3', // O
+      '#d8bfd8', // T
+      '#b5e5b5', // S
+      '#f4a9a8', // Z
+      '#b0b0e8', // J
+      '#ffd0a3', // L
+    ],
+    glow: 0,
+    rounded: true,
+    pixel: false,
+  },
+  pixel: {
+    label: 'Pixel art',
+    colors: COLORS,
+    glow: 0,
+    rounded: false,
+    pixel: true,
+  },
+};
+
 const PIECES = [
   null,
   [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
@@ -27,6 +79,10 @@ const PIECES = [
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
+
+function dropIntervalForLevel(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
+}
 
 const POWER_TYPES = ['bomb', 'lightning', 'dye', 'gravity', 'freeze'];
 const POWER_CHANCE = 0.09;
@@ -51,12 +107,32 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
+const skinSelectEl = document.getElementById('skin-select');
 const toastEl = document.getElementById('toast');
 const freezeIndicatorEl = document.getElementById('freeze-indicator');
+const leaderboardListEl = document.getElementById('leaderboard-list');
+const bestComboStatEl = document.getElementById('best-combo-stat');
+const maxLinesStatEl = document.getElementById('max-lines-stat');
+const resetLeaderboardBtn = document.getElementById('reset-leaderboard-btn');
+const nameEntryEl = document.getElementById('name-entry');
+const nameInputEl = document.getElementById('player-name-input');
+const submitScoreBtn = document.getElementById('submit-score-btn');
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('resume-btn');
+const pauseRestartBtn = document.getElementById('pause-restart-btn');
+const controlsBtn = document.getElementById('controls-btn');
+const pauseControlsList = document.getElementById('pause-controls-list');
+const startLevelSelect = document.getElementById('start-level-select');
 
 const THEME_KEY = 'tetris-theme';
+const LEADERBOARD_KEY = 'tetris-leaderboard';
+const STATS_KEY = 'tetris-stats';
+const MAX_START_LEVEL = 15;
+const SKIN_KEY = 'tetris-skin';
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, freezeUntil, toastTimer;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, freezeUntil, toastTimer, combo, bestCombo, maxLinesCleared;
+let startLevel = 1;
+let currentSkin = 'retro';
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -124,10 +200,11 @@ function clearLines() {
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    level = startLevel + Math.floor(lines / 10);
+    dropInterval = dropIntervalForLevel(level);
     updateHUD();
   }
+  return cleared;
 }
 
 function pieceCenter(piece) {
@@ -206,7 +283,14 @@ function softDrop() {
 function lockPiece() {
   merge();
   if (current.isSpecial) applyPowerUp(current);
-  clearLines();
+  const clearedCount = clearLines();
+  if (clearedCount > 0) {
+    combo++;
+    if (combo > bestCombo) bestCombo = combo;
+    if (clearedCount > maxLinesCleared) maxLinesCleared = clearedCount;
+  } else {
+    combo = 0;
+  }
   spawn();
 }
 
@@ -244,16 +328,96 @@ function updateFreezeIndicator(active) {
   freezeIndicatorEl.classList.remove('hidden');
 }
 
+function roundedRectPath(context, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (typeof context.roundRect === 'function') {
+    context.beginPath();
+    context.roundRect(x, y, w, h, r);
+    return;
+  }
+  // Manual fallback for canvas contexts without roundRect().
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.lineTo(x + w - r, y);
+  context.quadraticCurveTo(x + w, y, x + w, y + r);
+  context.lineTo(x + w, y + h - r);
+  context.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  context.lineTo(x + r, y + h);
+  context.quadraticCurveTo(x, y + h, x, y + h - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+  context.closePath();
+}
+
+function drawPixelTexture(context, x, y, w, h) {
+  const cell = Math.max(3, Math.floor(Math.min(w, h) / 4));
+  context.save();
+  context.beginPath();
+  context.rect(x, y, w, h);
+  context.clip();
+  let rowIdx = 0;
+  for (let ty = y; ty < y + h; ty += cell) {
+    let colIdx = 0;
+    for (let tx = x; tx < x + w; tx += cell) {
+      context.fillStyle = (rowIdx + colIdx) % 2 === 0
+        ? 'rgba(0,0,0,0.14)'
+        : 'rgba(255,255,255,0.10)';
+      context.fillRect(tx, ty, cell, cell);
+      colIdx++;
+    }
+    rowIdx++;
+  }
+  context.restore();
+}
+
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const skin = SKINS[currentSkin] || SKINS.retro;
+  const color = skin.colors[colorIndex];
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const w = size - 2;
+  const h = size - 2;
+
+  context.save();
   context.globalAlpha = alpha ?? 1;
+
+  if (skin.glow) {
+    context.shadowColor = color;
+    context.shadowBlur = skin.glow;
+  }
+
   context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
+  const cornerR = Math.min(6, w / 4, h / 4);
+  if (skin.rounded) {
+    roundedRectPath(context, px, py, w, h, cornerR);
+    context.fill();
+  } else {
+    context.fillRect(px, py, w, h);
+  }
+
+  // Highlight strip should not inherit the glow shadow.
+  context.shadowBlur = 0;
   context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
-  context.globalAlpha = 1;
+  const hlH = Math.min(4, h);
+  if (skin.rounded) {
+    // Clip to the block's own rounded path so the highlight's top corners
+    // follow the block outline instead of getting an independent (and
+    // mismatched) corner radius of its own.
+    context.save();
+    roundedRectPath(context, px, py, w, h, cornerR);
+    context.clip();
+    context.fillRect(px, py, w, hlH);
+    context.restore();
+  } else {
+    context.fillRect(px, py, w, hlH);
+  }
+
+  if (skin.pixel) {
+    drawPixelTexture(context, px, py, w, h);
+  }
+
+  context.restore();
 }
 
 function drawPieceGlow(context, piece, size) {
@@ -338,12 +502,146 @@ function drawNext() {
   if (next.isSpecial) drawPieceGlow(nextCtx, { shape, x: offX, y: offY, powerType: next.powerType }, NB);
 }
 
+const LEADERBOARD_SIZE = 5;
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadLeaderboard() {
+  const list = loadJSON(LEADERBOARD_KEY, []);
+  if (!Array.isArray(list)) return [];
+  return list.filter(e => e && typeof e.name === 'string' && Number.isFinite(e.score));
+}
+
+function saveLeaderboard(list) {
+  return saveJSON(LEADERBOARD_KEY, list);
+}
+
+function loadStats() {
+  const stats = loadJSON(STATS_KEY, null);
+  return {
+    bestCombo: stats && Number.isFinite(stats.bestCombo) ? stats.bestCombo : 0,
+    maxLines: stats && Number.isFinite(stats.maxLines) ? stats.maxLines : 0,
+  };
+}
+
+function saveStats(stats) {
+  return saveJSON(STATS_KEY, stats);
+}
+
+function updateStats() {
+  const stats = loadStats();
+  stats.bestCombo = Math.max(stats.bestCombo, bestCombo);
+  stats.maxLines = Math.max(stats.maxLines, maxLinesCleared);
+  saveStats(stats);
+  return stats;
+}
+
+function qualifiesForTop5(candidateScore, list) {
+  if (list.length < LEADERBOARD_SIZE) return true;
+  return candidateScore >= list[list.length - 1].score;
+}
+
+function renderLeaderboard(highlightId, list, stats) {
+  list = list || loadLeaderboard();
+  stats = stats || loadStats();
+
+  leaderboardListEl.innerHTML = '';
+  if (list.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'leaderboard-empty';
+    li.textContent = 'Sin puntuaciones aún';
+    leaderboardListEl.appendChild(li);
+  } else {
+    list.forEach(entry => {
+      const li = document.createElement('li');
+      li.className = 'leaderboard-entry';
+      if (highlightId != null && entry.id === highlightId) li.classList.add('leaderboard-highlight');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'leaderboard-name';
+      nameSpan.textContent = entry.name;
+
+      const scoreSpan = document.createElement('span');
+      scoreSpan.className = 'leaderboard-score';
+      scoreSpan.textContent = entry.score.toLocaleString();
+
+      li.appendChild(nameSpan);
+      li.appendChild(scoreSpan);
+      leaderboardListEl.appendChild(li);
+    });
+  }
+
+  bestComboStatEl.textContent = stats.bestCombo;
+  maxLinesStatEl.textContent = stats.maxLines;
+}
+
+function submitScore(rawName) {
+  const name = (rawName || '').trim().slice(0, 12) || 'Jugador';
+  const list = loadLeaderboard();
+  const entry = { id: Date.now() + Math.random(), name, score, lines, level, bestCombo };
+  list.push(entry);
+  list.sort((a, b) => b.score - a.score);
+  const trimmed = list.slice(0, LEADERBOARD_SIZE);
+  const saved = saveLeaderboard(trimmed);
+  renderLeaderboard(entry.id, trimmed);
+  nameEntryEl.classList.add('hidden');
+  if (!saved) showToast('No se pudo guardar el récord');
+}
+
+function resetLeaderboard() {
+  if (!confirm('¿Seguro que quieres borrar todos los récords?')) return;
+  lastTime = performance.now(); // dialog blocked the loop; avoid a dt spike on resume
+  localStorage.removeItem(LEADERBOARD_KEY);
+  localStorage.removeItem(STATS_KEY);
+  renderLeaderboard();
+}
+
+// Keeps overlay/restart-btn/pause-menu visibility in lockstep instead of
+// toggling each element by hand at every call site.
+function setOverlayMode(mode) {
+  // mode: 'hidden' | 'gameover' | 'paused'
+  restartBtn.classList.toggle('hidden', mode === 'paused');
+  pauseMenu.classList.toggle('hidden', mode !== 'paused');
+  pauseControlsList.classList.add('hidden');
+  overlay.classList.toggle('hidden', mode === 'hidden');
+}
+
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
-  overlay.classList.remove('hidden');
+  try {
+    const stats = updateStats();
+    const list = loadLeaderboard();
+    renderLeaderboard(null, list, stats);
+    if (qualifiesForTop5(score, list)) {
+      nameInputEl.value = '';
+      nameEntryEl.classList.remove('hidden');
+      setTimeout(() => nameInputEl.focus(), 0);
+    } else {
+      nameEntryEl.classList.add('hidden');
+    }
+  } catch {
+    nameEntryEl.classList.add('hidden');
+  }
+  setOverlayMode('gameover');
 }
 
 function applyTheme(theme) {
@@ -365,17 +663,39 @@ themeToggleBtn.addEventListener('click', () => {
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 });
 
+function applySkin(skin) {
+  if (!SKINS[skin]) skin = 'retro';
+  currentSkin = skin;
+  document.documentElement.dataset.skin = skin;
+  localStorage.setItem(SKIN_KEY, skin);
+  if (skinSelectEl) skinSelectEl.value = skin;
+  if (current) draw();
+}
+
+function initSkin() {
+  const saved = localStorage.getItem(SKIN_KEY);
+  applySkin(SKINS[saved] ? saved : 'retro');
+}
+
+if (skinSelectEl) {
+  skinSelectEl.addEventListener('change', () => {
+    applySkin(skinSelectEl.value);
+  });
+}
+
 function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    setOverlayMode('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    startLevelSelect.value = String(startLevel);
+    setOverlayMode('paused');
   }
 }
 
@@ -404,26 +724,37 @@ function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  combo = 0;
+  bestCombo = 0;
+  maxLinesCleared = 0;
+  dropInterval = dropIntervalForLevel(startLevel);
   dropAccum = 0;
   lastTime = performance.now();
   freezeUntil = 0;
   clearTimeout(toastTimer);
   toastEl.classList.remove('show');
   freezeIndicatorEl.classList.add('hidden');
+  nameEntryEl.classList.add('hidden');
+  nameInputEl.value = '';
   next = randomPiece();
   spawn();
   updateHUD();
-  overlay.classList.add('hidden');
+  setOverlayMode('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    // Let a focused native <select> handle its own Escape (closing its
+    // open dropdown) instead of also toggling pause underneath it.
+    if (document.activeElement === startLevelSelect) return;
+    togglePause();
+    return;
+  }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -449,5 +780,35 @@ document.addEventListener('keydown', e => {
 
 restartBtn.addEventListener('click', init);
 
+submitScoreBtn.addEventListener('click', () => submitScore(nameInputEl.value));
+nameInputEl.addEventListener('keydown', e => {
+  if (e.code === 'Enter') submitScore(nameInputEl.value);
+});
+resetLeaderboardBtn.addEventListener('click', resetLeaderboard);
+
+for (let i = 1; i <= MAX_START_LEVEL; i++) {
+  const opt = document.createElement('option');
+  opt.value = String(i);
+  opt.textContent = String(i);
+  startLevelSelect.appendChild(opt);
+}
+startLevelSelect.value = String(startLevel);
+
+resumeBtn.addEventListener('click', () => {
+  if (paused) togglePause();
+});
+
+pauseRestartBtn.addEventListener('click', init);
+
+controlsBtn.addEventListener('click', () => {
+  pauseControlsList.classList.toggle('hidden');
+});
+
+startLevelSelect.addEventListener('change', e => {
+  startLevel = parseInt(e.target.value, 10);
+});
+
 initTheme();
+initSkin();
+renderLeaderboard();
 init();
